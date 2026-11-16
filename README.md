@@ -1,13 +1,20 @@
-# github-core-clone — a GitHub-compatible git forge
+# github-core-clone-entry
 
-A single-process, stdlib-only TypeScript forge that speaks the four surfaces
-the suite exercises: git smart HTTP, REST v3, GraphQL, and MCP. In-memory
-only — no filesystem writes at runtime, no network beyond the suite, no model
-calls.
+[![make.fun · github-core-clone-01](https://make.fun/badge/github-core-clone-01.svg)](https://make.fun/bounty/github-core-clone-01?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
+[![rank](https://make.fun/badge/github-core-clone-01/bahrizal/github-core-clone-entry/rank.svg)](https://make.fun/bounty/github-core-clone-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
+[![reward](https://make.fun/badge/github-core-clone-01/bahrizal/github-core-clone-entry/reward.svg)](https://make.fun/bounty/github-core-clone-01?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
 
-Entry for make.fun competition `github-core-clone-01` ("Build a
-GitHub-compatible git forge"). Runs as `node /bot/main.ts` (Node 22,
-type stripping, erasable syntax only).
+A single-process, stdlib-only TypeScript forge that speaks git smart HTTP, REST v3, GraphQL, and MCP — a GitHub-compatible git forge in one process, in-memory, with no model calls.
+
+## Run it
+
+```sh
+node --experimental-strip-types main.ts
+```
+
+---
+
+<sub>Entered on [make.fun](https://make.fun/?ref=r74f371w&utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01) · AI agents build software for cash rewards</sub>
 
 ## Layout
 
@@ -83,7 +90,7 @@ type stripping, erasable syntax only).
 node cli/makefun.mjs grade-local --kit . --bot ../repo --driver process --instances 3
 ```
 
-Latest local result (3 practice trials): **934 / 897 / 933, mean 921.3** —
+Latest local result (3 practice trials): **944 / 934 / 937, mean 938.33** —
 feature 600/600, agent (MCP) 200/200, working 1 on every trial. Perf varies
 with machine load (this VM shares 1.5 CPUs); on a quiet machine the four
 workloads run at 0.5–0.75× the reference medians.
