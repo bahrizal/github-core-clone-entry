@@ -90,10 +90,12 @@ node --experimental-strip-types main.ts
 node cli/makefun.mjs grade-local --kit . --bot ../repo --driver process --instances 3
 ```
 
-Latest local result (3 practice trials): **944 / 934 / 937, mean 938.33** —
+Latest local result (3 practice trials): **908 / 910 / 909, mean 909.00** —
 feature 600/600, agent (MCP) 200/200, working 1 on every trial. Perf varies
 with machine load (this VM shares 1.5 CPUs); on a quiet machine the four
-workloads run at 0.5–0.75× the reference medians.
+workloads run at 0.5–0.75× the reference medians. The previous main.ts
+re-measured in the same hour scores 913 / 902 / 908, the same level, so
+the rewritten entrypoint changed nothing about performance.
 
 ## License
 
