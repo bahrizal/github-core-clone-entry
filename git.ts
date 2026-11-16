@@ -7,6 +7,7 @@ import { store, type Repo, type GitObject } from './store.ts';
 import {
   ZERO_OID, isObjectId, hashObject, encodePktLine, encodePktLines, decodePktLines,
   writePack, readPack, parseCommit, parseTag, parseTree, collectReachable,
+  reachableCommits,
 } from './gitproto.ts';
 
 const AGENT = 'forge/1.0';
@@ -157,10 +158,21 @@ interface FetchArgs {
   haves: string[];
   shallow: string[];
   depth: number | null;
+  /** deepen-since <unix seconds>: only commits newer than this timestamp. */
+  deepenSince: number | null;
+  /** deepen-not <ref>: commits reachable from these refs are excluded. */
+  deepenNot: string[];
+}
+
+/** Unix timestamp from a commit's committer line ("Name <email> <ts> <tz>"). */
+function commitTimestamp(data: Buffer): number {
+  const committer = parseCommit(data).committer;
+  const match = committer.match(/ (\d+) [+-]\d{4}$/);
+  return match ? Number(match[1]) : 0;
 }
 
 function parseFetchArgs(packets: ReturnType<typeof decodePktLines>): FetchArgs {
-  const args: FetchArgs = { wants: [], haves: [], shallow: [], depth: null };
+  const args: FetchArgs = { wants: [], haves: [], shallow: [], depth: null, deepenSince: null, deepenNot: [] };
   let pastDelim = false;
   for (const packet of packets) {
     if (packet.kind === 'delim') {
@@ -176,6 +188,12 @@ function parseFetchArgs(packets: ReturnType<typeof decodePktLines>): FetchArgs {
     else if (line.startsWith('deepen ')) {
       const n = Number(line.slice(7).trim());
       if (Number.isInteger(n) && n > 0) args.depth = n;
+    } else if (line.startsWith('deepen-since ')) {
+      const n = Number(line.slice(13).trim());
+      if (Number.isInteger(n) && n >= 0) args.deepenSince = n;
+    } else if (line.startsWith('deepen-not ')) {
+      const ref = line.slice(11).trim();
+      if (ref.length > 0) args.deepenNot.push(ref);
     }
   }
   return args;
@@ -230,45 +248,64 @@ function fetchResponse(repo: Repo, args: FetchArgs): Buffer {
   const shallowOut: string[] = [];
   const unshallowOut: string[] = [];
 
-  if (args.depth === null) {
+  const bounded = args.depth !== null || args.deepenSince !== null || args.deepenNot.length > 0;
+  if (!bounded) {
     const reachable = collectReachable(args.wants, lookup);
     const held = collectReachable([...haveSet], lookup);
     for (const oid of reachable) if (!held.has(oid)) wantObjects.add(oid);
   } else {
-    // Depth-limited: commits within `depth` generations of a want (distance 0
-    // is the want itself). The boundary commits become shallow; a previously
+    // Bounded fetch: one or more of depth / deepen-since / deepen-not.
+    // The included set is the commits reachable from the wants that pass
+    // every bound; the boundary commits become shallow, and a previously
     // shallow commit whose parents are now all known becomes unshallow.
+    // deepen-not resolves a ref name (or a raw oid) and excludes everything
+    // reachable from it; deepen-since keeps only commits newer than the
+    // timestamp (git's rule: committer date strictly greater than it, and
+    // the walk stops at the cutoff — parents past it are not traversed).
+    const excluded = new Set<string>();
+    for (const ref of args.deepenNot) {
+      const oid = isObjectId(ref) ? ref : repo.refs.get(ref);
+      if (oid === undefined) continue;
+      const object = lookup(oid);
+      const start = object !== undefined && object.type === 'tag' ? parseTag(object.data).object : oid;
+      for (const commit of reachableCommits([start], lookup)) excluded.add(commit);
+    }
+    const passesBounds = (oid: string, distance: number): boolean => {
+      if (excluded.has(oid)) return false;
+      if (args.depth !== null && distance >= args.depth) return false;
+      if (args.deepenSince !== null) {
+        const object = lookup(oid);
+        if (object === undefined || object.type !== 'commit') return false;
+        if (commitTimestamp(object.data) <= args.deepenSince) return false;
+      }
+      return true;
+    };
     const distance = new Map<string, number>();
     const queue: string[] = [];
+    let head = 0;
     const seedCommit = (oid: string): void => {
       const object = lookup(oid);
       if (object === undefined) return;
-      if (object.type === 'tag') {
-        const target = parseTag(object.data).object;
-        if (!distance.has(target)) {
-          distance.set(target, 0);
-          queue.push(target);
-        }
-        return;
-      }
-      if (object.type !== 'commit') return;
-      if (!distance.has(oid)) {
-        distance.set(oid, 0);
-        queue.push(oid);
+      const target = object.type === 'tag' ? parseTag(object.data).object : oid;
+      const targetObject = lookup(target);
+      if (targetObject === undefined || targetObject.type !== 'commit') return;
+      if (!distance.has(target) && passesBounds(target, 0)) {
+        distance.set(target, 0);
+        queue.push(target);
       }
     };
     for (const want of args.wants) seedCommit(want);
-    while (queue.length > 0) {
-      const oid = queue.shift()!;
+    while (head < queue.length) {
+      const oid = queue[head]!;
+      head += 1;
       const d = distance.get(oid)!;
-      if (d + 1 >= args.depth) continue;
       const object = lookup(oid);
       if (object === undefined || object.type !== 'commit') continue;
       for (const parent of parseCommit(object.data).parents) {
-        if (!distance.has(parent)) {
-          distance.set(parent, d + 1);
-          queue.push(parent);
-        }
+        if (distance.has(parent)) continue;
+        if (!passesBounds(parent, d + 1)) continue;
+        distance.set(parent, d + 1);
+        queue.push(parent);
       }
     }
     const included = new Set([...distance.keys()]);

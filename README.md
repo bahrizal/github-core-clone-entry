@@ -47,7 +47,10 @@ type stripping, erasable syntax only).
   fast-forward ref and reports one line per ref.
 - **Shallow fetch** is depth-limited by generation, not by full
   reachability: a `have` is a boundary (its parents are *not* held), and
-  boundary commits become `shallow` / `unshallow` lines.
+  boundary commits become `shallow` / `unshallow` lines. `deepen-since`
+  (committer date strictly after the timestamp, walk stops at the cutoff)
+  and `deepen-not` (everything reachable from the named ref excluded)
+  are honoured the same way, and combine with `deepen`.
 - **Merge conflicts** are detected against the *current* base tip, not the
   tip at PR creation — after PR A merges, PR B against the same base must
   answer 405.
